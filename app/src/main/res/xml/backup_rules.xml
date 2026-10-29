@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Auto Backup (Android 6–11): base de datos de Room y preferencias de DataStore. -->
+<full-backup-content>
+    <include domain="database" path="pinchazos.db" />
+    <include domain="file" path="datastore/" />
+</full-backup-content>
