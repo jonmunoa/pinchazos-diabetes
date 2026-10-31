@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jon.pinchazos.PinchazosApp
+import com.jon.pinchazos.data.Insulina
 import com.jon.pinchazos.data.Pinchazo
 import com.jon.pinchazos.data.PinchazoRepository
 import com.jon.pinchazos.dominio.DiaPinchazos
@@ -28,6 +29,12 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 data class InformesUiState(
+    /** Todas las insulinas, también las archivadas (para editar sus pinchazos). */
+    val insulinas: List<Insulina> = emptyList(),
+    /** Las que se pueden elegir para filtrar: las que tienen pinchazos, en orden de alta. */
+    val filtrables: List<String> = emptyList(),
+    /** null = todas: suma las unidades de todas las insulinas. */
+    val filtro: String? = null,
     val periodo: Periodo = Periodo.SIETE_DIAS,
     val hoy: LocalDate = LocalDate.now(),
     val resumen: Resumen = Resumen(0, 0.0, 0.0),
@@ -48,18 +55,30 @@ class InformesViewModel(
 ) : ViewModel() {
 
     private val periodo = MutableStateFlow(Periodo.SIETE_DIAS)
+    private val filtro = MutableStateFlow<String?>(null)
     private val canal = Channel<EventoInformes>(Channel.BUFFERED)
     val eventos: Flow<EventoInformes> = canal.receiveAsFlow()
 
     val estado: StateFlow<InformesUiState> = combine(
         repositorio.pinchazos,
+        repositorio.insulinas,
         periodo,
+        filtro,
         reloj,
-    ) { todos, periodo, ahora ->
+    ) { pinchazos, insulinas, periodo, filtro, ahora ->
         val zona = zona()
         val hoy = Formatos.fecha(ahora, zona)
+        val usadas = pinchazos.mapTo(mutableSetOf()) { it.insulina }
+        val filtrables = insulinas.map { it.nombre }.filter { it in usadas } +
+            (usadas - insulinas.map { it.nombre }.toSet()).sorted()
+        // Si la insulina filtrada ya no tiene pinchazos (o ha cambiado de nombre), se vuelve a todas.
+        val elegido = filtro?.takeIf { it in filtrables }
+        val todos = if (elegido == null) pinchazos else pinchazos.filter { it.insulina == elegido }
         val delPeriodo = Informes.filtrar(todos, periodo, hoy, zona)
         InformesUiState(
+            insulinas = insulinas,
+            filtrables = filtrables,
+            filtro = elegido,
             periodo = periodo,
             hoy = hoy,
             resumen = Informes.resumen(todos, periodo, hoy, zona),
@@ -71,6 +90,10 @@ class InformesViewModel(
 
     fun elegirPeriodo(nuevo: Periodo) {
         periodo.value = nuevo
+    }
+
+    fun filtrar(insulina: String?) {
+        filtro.value = insulina
     }
 
     fun actualizar(pinchazo: Pinchazo) {

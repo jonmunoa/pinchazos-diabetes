@@ -1,6 +1,6 @@
 package com.jon.pinchazos.dominio
 
-import com.jon.pinchazos.data.Insulinas
+import com.jon.pinchazos.data.Insulina
 import com.jon.pinchazos.data.Pinchazo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -16,7 +16,7 @@ class InformesTest {
     private fun p(fecha: LocalDate, hora: String, dosis: Double) = Pinchazo(
         timestamp = LocalDateTime.of(fecha, java.time.LocalTime.parse(hora)).atZone(zona).toInstant().toEpochMilli(),
         dosis = dosis,
-        insulina = Insulinas.HUMALOG_JUNIOR,
+        insulina = Insulina.HUMALOG_JUNIOR,
     )
 
     private fun haceDias(n: Long) = hoy.minusDays(n)
@@ -152,13 +152,25 @@ class InformesTest {
 
     @Test
     fun dosisSeAjustaAPasosDeMediaUnidadDentroDelRango() {
-        assertEquals(25, Dosis.VALORES.size)
-        assertEquals(12.0, Dosis.VALORES.last(), 0.0)
-        assertEquals(4.5, Dosis.ajustar(4.3), 0.0)
-        assertEquals(12.0, Dosis.ajustar(12.7), 0.0)
-        assertEquals(0.0, Dosis.ajustar(-1.0), 0.0)
-        assertEquals(0.0, Dosis.sumarPasos(0.0, -1), 0.0)
-        assertEquals(5.0, Dosis.sumarPasos(4.5, 1), 0.0)
+        val humalog = Insulina.humalogJunior()
+        assertEquals(25, humalog.valores.size)
+        assertEquals(12.0, humalog.valores.last(), 0.0)
+        assertEquals(4.5, humalog.ajustar(4.3), 0.0)
+        assertEquals(12.0, humalog.ajustar(12.7), 0.0)
+        assertEquals(0.0, humalog.ajustar(-1.0), 0.0)
+        assertEquals(0.0, humalog.sumarPasos(0.0, -1), 0.0)
+        assertEquals(5.0, humalog.sumarPasos(4.5, 1), 0.0)
+        // Con pocos valores, los botones rápidos son todos (0 a 12 de media en media).
+        assertEquals(humalog.valores, humalog.atajos)
+    }
+
+    @Test
+    fun unaInsulinaDeUnidadesEnterasConMaximoAltoUsaAtajosPorcentuales() {
+        val basal = Insulina(nombre = "Lantus", paso = 1.0, maximo = 40.0)
+        assertEquals(41, basal.valores.size)
+        assertEquals(listOf(10.0, 20.0, 30.0, 40.0), basal.atajos)
+        assertEquals(23.0, basal.ajustar(22.6), 0.0)
+        assertEquals(40.0, basal.sumarPasos(40.0, 1), 0.0)
     }
 
     @Test

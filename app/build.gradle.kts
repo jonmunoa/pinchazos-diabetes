@@ -13,13 +13,23 @@ android {
         applicationId = "com.jon.pinchazos"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        // La versión es el número de commits: cada APK hecho tras un commit nuevo es una
+        // actualización para Android y se instala encima sin perder datos.
+        val commits = providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
+            .standardOutput.asText.get().trim().toInt()
+        versionCode = commits
+        versionName = "2.$commits"
     }
 
     buildTypes {
+        // La de debug va mucho más lenta (Compose sin optimizar): para el móvil, siempre la release.
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            // Firmada con la clave de debug de este ordenador, como las versiones anteriores:
+            // así se instala encima sin perder los pinchazos.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -30,6 +40,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     testOptions {

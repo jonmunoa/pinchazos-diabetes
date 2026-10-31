@@ -28,4 +28,14 @@ interface PinchazoDao {
 
     @Delete
     suspend fun borrar(pinchazo: Pinchazo)
+
+    /** Al cambiar el nombre de una insulina, sus pinchazos pasan a llevar el nuevo. */
+    @Query("UPDATE pinchazos SET insulina = :nuevo WHERE insulina = :viejo")
+    suspend fun renombrarInsulina(viejo: String, nuevo: String)
+
+    @Query("DELETE FROM pinchazos WHERE insulina = :insulina")
+    suspend fun borrarDeInsulina(insulina: String)
+
+    @Query("SELECT COUNT(*) FROM pinchazos WHERE insulina = :insulina")
+    suspend fun contarDeInsulina(insulina: String): Int
 }

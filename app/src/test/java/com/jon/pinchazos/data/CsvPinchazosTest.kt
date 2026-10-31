@@ -15,8 +15,8 @@ class CsvPinchazosTest {
     fun escribeCabeceraYFilasConComaDecimal() {
         val csv = CsvPinchazos.escribir(
             listOf(
-                Pinchazo(1, ts("2026-10-28T14:10"), 4.5, Insulinas.HUMALOG_JUNIOR),
-                Pinchazo(2, ts("2026-10-27T08:05"), 2.0, Insulinas.HUMALOG_JUNIOR),
+                Pinchazo(1, ts("2026-10-28T14:10"), 4.5, Insulina.HUMALOG_JUNIOR),
+                Pinchazo(2, ts("2026-10-27T08:05"), 2.0, Insulina.HUMALOG_JUNIOR),
             ),
             zona,
         )
@@ -29,8 +29,8 @@ class CsvPinchazosTest {
     @Test
     fun loExportadoSeVuelveALeerIgual() {
         val originales = listOf(
-            Pinchazo(timestamp = ts("2026-10-27T08:05"), dosis = 2.0, insulina = Insulinas.HUMALOG_JUNIOR),
-            Pinchazo(timestamp = ts("2026-10-28T14:10"), dosis = 4.5, insulina = Insulinas.HUMALOG_JUNIOR),
+            Pinchazo(timestamp = ts("2026-10-27T08:05"), dosis = 2.0, insulina = Insulina.HUMALOG_JUNIOR),
+            Pinchazo(timestamp = ts("2026-10-28T14:10"), dosis = 4.5, insulina = Insulina.HUMALOG_JUNIOR),
         )
         val leidos = CsvPinchazos.leer(CsvPinchazos.escribir(originales, zona), zona)
         assertEquals(0, leidos.lineasConError)
@@ -43,14 +43,14 @@ class CsvPinchazosTest {
             fecha,hora,insulina,dosis
             28/10/2026,9:30,Humalog Junior,"3,5"
             2026-10-28,14:00,,1.5
-            2026-10-28,15:00,Humalog Junior,99
+            2026-10-28,15:00,Humalog Junior,150
             esto no es una fecha,10:00,Humalog Junior,2
         """.trimIndent()
         val r = CsvPinchazos.leer(texto, zona)
         assertEquals(2, r.lineasConError)
         assertEquals(listOf(ts("2026-10-28T09:30"), ts("2026-10-28T14:00")), r.pinchazos.map { it.timestamp })
         assertEquals(listOf(3.5, 1.5), r.pinchazos.map { it.dosis })
-        assertTrue(r.pinchazos.all { it.insulina == Insulinas.HUMALOG_JUNIOR })
+        assertTrue(r.pinchazos.all { it.insulina == Insulina.HUMALOG_JUNIOR })
     }
 
     @Test(expected = IllegalArgumentException::class)

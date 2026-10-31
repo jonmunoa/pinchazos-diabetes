@@ -1,5 +1,0 @@
-<resources>
-    <style name="Theme.Pinchazos" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@color/fondo_oscuro</item>
-    </style>
-</resources>

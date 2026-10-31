@@ -1,6 +1,6 @@
 package com.jon.pinchazos.ui
 
-import com.jon.pinchazos.data.Insulinas
+import com.jon.pinchazos.data.Insulina
 import com.jon.pinchazos.data.Pinchazo
 import com.jon.pinchazos.data.PinchazoRepository
 import com.jon.pinchazos.dominio.Periodo
@@ -41,9 +41,9 @@ class InformesViewModelTest {
     @Test
     fun borrarQuitaElRegistroDelHistorialYDeshacerLoRecupera() = runTest(dispatcher) {
         val dao = FakePinchazoDao()
-        val repo = PinchazoRepository(dao) { zona }
-        val manana = repo.registrar(2.0, Insulinas.HUMALOG_JUNIOR, ahora - 5 * hora)
-        val mediodia = repo.registrar(4.5, Insulinas.HUMALOG_JUNIOR, ahora - hora)
+        val repo = PinchazoRepository(dao, FakeInsulinaDao()) { zona }
+        val manana = repo.registrar(2.0, Insulina.humalogJunior(), ahora - 5 * hora)
+        val mediodia = repo.registrar(4.5, Insulina.humalogJunior(), ahora - hora)
 
         val vm = InformesViewModel(repo, reloj = flowOf(ahora), zona = { zona })
         val eventos = mutableListOf<EventoInformes>()
@@ -67,8 +67,8 @@ class InformesViewModelTest {
     @Test
     fun borrarElUnicoPinchazoDelDiaQuitaElDia() = runTest(dispatcher) {
         val dao = FakePinchazoDao()
-        val repo = PinchazoRepository(dao) { zona }
-        val p = repo.registrar(3.0, Insulinas.HUMALOG_JUNIOR, ahora)
+        val repo = PinchazoRepository(dao, FakeInsulinaDao()) { zona }
+        val p = repo.registrar(3.0, Insulina.humalogJunior(), ahora)
         val vm = InformesViewModel(repo, reloj = flowOf(ahora), zona = { zona })
         backgroundScope.launch { vm.estado.collect {} }
         runCurrent()
@@ -83,8 +83,8 @@ class InformesViewModelTest {
     @Test
     fun corregirCambiaDosisYHora() = runTest(dispatcher) {
         val dao = FakePinchazoDao()
-        val repo = PinchazoRepository(dao) { zona }
-        val p = repo.registrar(3.0, Insulinas.HUMALOG_JUNIOR, ahora)
+        val repo = PinchazoRepository(dao, FakeInsulinaDao()) { zona }
+        val p = repo.registrar(3.0, Insulina.humalogJunior(), ahora)
         val vm = InformesViewModel(repo, reloj = flowOf(ahora), zona = { zona })
         backgroundScope.launch { vm.estado.collect {} }
         runCurrent()
@@ -92,5 +92,26 @@ class InformesViewModelTest {
         vm.actualizar(p.copy(dosis = 3.5, timestamp = ahora - 2 * hora))
         runCurrent()
         assertEquals(listOf(p.copy(dosis = 3.5, timestamp = ahora - 2 * hora)), dao.guardados)
+    }
+
+    @Test
+    fun filtrarPorInsulinaSoloCuentaLaSuya() = runTest(dispatcher) {
+        val insulinas = FakeInsulinaDao()
+        val repo = PinchazoRepository(FakePinchazoDao(), insulinas) { zona }
+        insulinas.insertar(Insulina(nombre = "Lantus", paso = 1.0, maximo = 40.0))
+        repo.registrar(4.0, Insulina.humalogJunior(), ahora - hora)
+        repo.registrar(20.0, Insulina(nombre = "Lantus", paso = 1.0, maximo = 40.0), ahora - 2 * hora)
+        val vm = InformesViewModel(repo, reloj = flowOf(ahora), zona = { zona })
+        backgroundScope.launch { vm.estado.collect {} }
+        vm.elegirPeriodo(Periodo.HOY)
+        runCurrent()
+        assertEquals(listOf(Insulina.HUMALOG_JUNIOR, "Lantus"), vm.estado.value.filtrables)
+        assertEquals(24.0, vm.estado.value.resumen.unidades, 0.0)
+
+        vm.filtrar("Lantus")
+        runCurrent()
+        assertEquals("Lantus", vm.estado.value.filtro)
+        assertEquals(20.0, vm.estado.value.resumen.unidades, 0.0)
+        assertEquals(1, vm.estado.value.historial.single().pinchazos.size)
     }
 }

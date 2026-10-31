@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,19 +26,23 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.jon.pinchazos.data.Insulina
 import com.jon.pinchazos.data.Pinchazo
 import com.jon.pinchazos.dominio.Formatos
 import java.time.LocalDate
 import java.time.ZoneId
 
-/** Hoja inferior para cambiar dosis/hora de un registro o borrarlo (con confirmación en la propia hoja). */
+/**
+ * Hoja inferior para cambiar dosis/hora de un registro o borrarlo (con confirmación en la propia
+ * hoja). [insulina] es la suya, para que el selector vaya en sus pasos y hasta su máximo.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditarPinchazo(
     pinchazo: Pinchazo,
+    insulina: Insulina,
     hoy: LocalDate,
     onGuardar: (Pinchazo) -> Unit,
     onBorrar: (Pinchazo) -> Unit,
@@ -46,7 +50,6 @@ fun EditarPinchazo(
 ) {
     var dosis by remember { mutableDoubleStateOf(pinchazo.dosis) }
     var timestamp by remember { mutableLongStateOf(pinchazo.timestamp) }
-    var eligiendoHora by remember { mutableStateOf(false) }
     var confirmandoBorrado by remember { mutableStateOf(false) }
     // Un doble toque en Guardar/Borrar no debe aplicar el cambio dos veces.
     var hecho by remember { mutableStateOf(false) }
@@ -61,7 +64,7 @@ fun EditarPinchazo(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Column {
                 Text("Editar pinchazo", style = MaterialTheme.typography.titleLarge)
@@ -72,19 +75,16 @@ fun EditarPinchazo(
                 )
             }
 
-            SelectorDosis(dosis, onCambiar = { dosis = it })
+            SelectorDosis(insulina, dosis, onCambiar = { dosis = it })
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Hora", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        "${Formatos.etiquetaCorta(Formatos.fecha(timestamp, zona), hoy)}, ${Formatos.hora(timestamp, zona)}",
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                }
-                OutlinedButton(onClick = { eligiendoHora = true }, modifier = Modifier.height(48.dp)) {
-                    Text("Cambiar hora")
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Hora", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "${Formatos.etiquetaCorta(Formatos.fecha(timestamp, zona), hoy)}, ${Formatos.hora(timestamp, zona)}",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                val ahora = remember { System.currentTimeMillis() }
+                ElegirMomento(timestamp, ahora, onElegir = { timestamp = it ?: ahora }, permitirAhora = false)
             }
 
             if (confirmandoBorrado) {
@@ -102,7 +102,7 @@ fun EditarPinchazo(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(
                                 onClick = { confirmandoBorrado = false },
-                                modifier = Modifier.weight(1f).height(52.dp),
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                             ) { Text("Cancelar") }
                             Button(
                                 onClick = {
@@ -115,7 +115,7 @@ fun EditarPinchazo(
                                     containerColor = MaterialTheme.colorScheme.error,
                                     contentColor = MaterialTheme.colorScheme.onError,
                                 ),
-                                modifier = Modifier.weight(1f).height(52.dp),
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                             ) { Text("Sí, borrar") }
                         }
                     }
@@ -125,7 +125,7 @@ fun EditarPinchazo(
                     OutlinedButton(
                         onClick = { confirmandoBorrado = true },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                        modifier = Modifier.weight(1f).height(56.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                     ) { Text("Borrar") }
                     Button(
                         onClick = {
@@ -134,21 +134,10 @@ fun EditarPinchazo(
                                 onGuardar(pinchazo.copy(dosis = dosis, timestamp = timestamp))
                             }
                         },
-                        modifier = Modifier.weight(2f).height(56.dp),
+                        modifier = Modifier.weight(2f).heightIn(min = 48.dp),
                     ) { Text("Guardar") }
                 }
             }
         }
-    }
-
-    if (eligiendoHora) {
-        SelectorFechaHora(
-            inicial = timestamp,
-            onElegido = {
-                timestamp = it
-                eligiendoHora = false
-            },
-            onCancelar = { eligiendoHora = false },
-        )
     }
 }

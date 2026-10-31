@@ -26,7 +26,6 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.jon.pinchazos.dominio.DiaPinchazos
-import com.jon.pinchazos.dominio.Dosis
 import com.jon.pinchazos.dominio.Formatos
 import com.jon.pinchazos.dominio.Informes
 import com.jon.pinchazos.dominio.ResumenFranja
@@ -55,7 +54,7 @@ fun BarrasFranjas(franjas: List<ResumenFranja>) {
                         .weight(1f)
                         .height(22.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                 ) {
                     val fraccion = (f.unidades / maximo).toFloat()
                     if (fraccion > 0f) {
@@ -94,6 +93,8 @@ fun GraficoCuandoCuanto(dias: List<DiaPinchazos>, hoy: LocalDate, modifier: Modi
         fontWeight = FontWeight.Bold,
     )
     val zona = ZoneId.systemDefault()
+    // El círculo más grande es la dosis más alta del gráfico (12 u como poco, como la pluma de siempre).
+    val dosisMaxima = maxOf(12.0, dias.maxOfOrNull { d -> d.pinchazos.maxOfOrNull { it.dosis } ?: 0.0 } ?: 0.0)
     val alturaFila = 46.dp
     val alturaCabecera = 22.dp
     val descripcion = dias.joinToString(". ") { d ->
@@ -136,14 +137,14 @@ fun GraficoCuandoCuanto(dias: List<DiaPinchazos>, hoy: LocalDate, modifier: Modi
                 val momento = Instant.ofEpochMilli(p.timestamp).atZone(zona)
                 x(momento.hour + momento.minute / 60f)
             }
-            val radios = dia.pinchazos.map { radioMin + (radioMax - radioMin) * sqrt((it.dosis / Dosis.MAX).toFloat()) }
+            val radios = dia.pinchazos.map { radioMin + (radioMax - radioMin) * sqrt((it.dosis / dosisMaxima).toFloat()) }
             val centros = Informes.repartirSinSolapar(reales, radios, hueco = 3.dp.toPx(), maxX = size.width)
 
             // Punto en la hora exacta: se ve cuando el círculo ha tenido que apartarse.
             reales.forEach { drawCircle(colores.primary, 3.dp.toPx(), Offset(it, y)) }
             dia.pinchazos.forEachIndexed { j, p ->
                 val centro = Offset(centros[j], y)
-                drawCircle(colores.surfaceContainerLow, radios[j] + 2.dp.toPx(), centro)
+                drawCircle(colores.surfaceContainerLowest, radios[j] + 2.dp.toPx(), centro)
                 drawCircle(colores.primary, radios[j], centro)
                 val t = medidor.measure(Formatos.numero(p.dosis), estiloDosis)
                 drawText(t, topLeft = Offset(centro.x - t.size.width / 2f, centro.y - t.size.height / 2f))

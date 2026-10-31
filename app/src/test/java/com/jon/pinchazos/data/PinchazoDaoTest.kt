@@ -30,7 +30,7 @@ class PinchazoDaoTest {
     fun cerrar() = db.close()
 
     private fun p(timestamp: Long, dosis: Double) =
-        Pinchazo(timestamp = timestamp, dosis = dosis, insulina = Insulinas.HUMALOG_JUNIOR)
+        Pinchazo(timestamp = timestamp, dosis = dosis, insulina = Insulina.HUMALOG_JUNIOR)
 
     @Test
     fun observarTodosDevuelveDelMasRecienteAlMasAntiguo() = runTest {
@@ -46,7 +46,7 @@ class PinchazoDaoTest {
     fun insertarAsignaIdsYGuardaTodosLosCampos() = runTest {
         val id = dao.insertar(p(1_000, 4.5))
         assertTrue(id > 0)
-        assertEquals(Pinchazo(id, 1_000, 4.5, Insulinas.HUMALOG_JUNIOR), dao.todos().single())
+        assertEquals(Pinchazo(id, 1_000, 4.5, Insulina.HUMALOG_JUNIOR), dao.todos().single())
     }
 
     @Test
@@ -54,8 +54,8 @@ class PinchazoDaoTest {
         val id = dao.insertar(p(1_000, 2.0))
         dao.insertar(p(2_000, 3.0))
 
-        dao.actualizar(Pinchazo(id, 1_500, 2.5, Insulinas.HUMALOG_JUNIOR))
-        assertEquals(Pinchazo(id, 1_500, 2.5, Insulinas.HUMALOG_JUNIOR), dao.todos().first())
+        dao.actualizar(Pinchazo(id, 1_500, 2.5, Insulina.HUMALOG_JUNIOR))
+        assertEquals(Pinchazo(id, 1_500, 2.5, Insulina.HUMALOG_JUNIOR), dao.todos().first())
 
         dao.borrar(dao.todos().first())
         assertEquals(listOf(2_000L), dao.todos().map { it.timestamp })

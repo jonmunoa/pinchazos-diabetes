@@ -1,10 +1,9 @@
 package com.jon.pinchazos.ui
 
-import com.jon.pinchazos.data.Insulinas
+import com.jon.pinchazos.data.Insulina
 import com.jon.pinchazos.data.MemoriaDosis
 import com.jon.pinchazos.data.Pinchazo
 import com.jon.pinchazos.data.PinchazoRepository
-import com.jon.pinchazos.dominio.Dosis
 import com.jon.pinchazos.ui.registrar.EstadoBoton
 import com.jon.pinchazos.ui.registrar.EventoRegistro
 import com.jon.pinchazos.ui.registrar.RegistrarViewModel
@@ -37,12 +36,14 @@ class RegistrarViewModelTest {
 
     private val dispatcher = StandardTestDispatcher()
     private lateinit var dao: FakePinchazoDao
+    private lateinit var insulinas: FakeInsulinaDao
     private lateinit var memoria: FakeMemoria
 
     @Before
     fun preparar() {
         Dispatchers.setMain(dispatcher)
         dao = FakePinchazoDao()
+        insulinas = FakeInsulinaDao()
         memoria = FakeMemoria(4.5)
     }
 
@@ -53,7 +54,7 @@ class RegistrarViewModelTest {
 
     private fun TestScope.crear(memoria: MemoriaDosis = this@RegistrarViewModelTest.memoria): Prueba {
         val vm = RegistrarViewModel(
-            repositorio = PinchazoRepository(dao) { zona },
+            repositorio = PinchazoRepository(dao, insulinas) { zona },
             memoria = memoria,
             reloj = flowOf(ahora),
             ahora = { ahora },
@@ -87,7 +88,7 @@ class RegistrarViewModelTest {
     @Test
     fun siLasPreferenciasFallanSeUsaLaDosisPorDefecto() = runTest(dispatcher) {
         val vm = crear(FakeMemoria(null, fallar = true)).vm
-        assertEquals(Dosis.POR_DEFECTO, vm.estado.value.dosis!!, 0.0)
+        assertEquals(Insulina.DOSIS_POR_DEFECTO, vm.estado.value.dosis!!, 0.0)
         assertEquals(EstadoBoton.LISTO, vm.estado.value.boton)
     }
 
@@ -98,7 +99,7 @@ class RegistrarViewModelTest {
         p.vm.registrar()
         runCurrent()
 
-        assertEquals(listOf(Pinchazo(1, ahora, 6.0, Insulinas.HUMALOG_JUNIOR)), dao.guardados)
+        assertEquals(listOf(Pinchazo(1, ahora, 6.0, Insulina.HUMALOG_JUNIOR)), dao.guardados)
         assertEquals(listOf<EventoRegistro>(EventoRegistro.Registrado(dao.guardados.single())), p.eventos)
         assertEquals(6.0, memoria.guardada!!, 0.0)
         assertEquals(1, p.vm.estado.value.hoyPinchazos)
@@ -188,5 +189,54 @@ class RegistrarViewModelTest {
 
         assertEquals(ahora, vm.estado.value.ultimo!!.timestamp)
         assertEquals(2, vm.estado.value.hoyPinchazos)
+    }
+
+    @Test
+    fun cadaInsulinaRecuerdaSuDosisYSeRegistraConLaElegida() = runTest(dispatcher) {
+        val lantusId = insulinas.insertar(Insulina(nombre = "Lantus", paso = 1.0, maximo = 40.0))
+        val p = crear()
+        assertEquals(2, p.vm.estado.value.insulinas.size)
+        assertEquals(Insulina.HUMALOG_JUNIOR, p.vm.estado.value.insulina!!.nombre)
+
+        p.vm.elegirInsulina(lantusId)
+        runCurrent()
+        // Sin dosis recordada, la de por defecto; y en sus pasos de unidad entera.
+        assertEquals(Insulina.DOSIS_POR_DEFECTO, p.vm.estado.value.dosis!!, 0.0)
+        p.vm.elegirDosis(22.4)
+        runCurrent()
+        assertEquals(22.0, p.vm.estado.value.dosis!!, 0.0)
+        p.vm.registrar()
+        runCurrent()
+
+        assertEquals("Lantus", dao.guardados.single().insulina)
+        assertEquals(22.0, memoria.guardadas[lantusId]!!, 0.0)
+
+        // Al volver a Humalog, su última dosis; su tarjeta no cuenta el pinchazo de Lantus.
+        p.vm.elegirInsulina(1)
+        runCurrent()
+        assertEquals(4.5, p.vm.estado.value.dosis!!, 0.0)
+        assertEquals(0, p.vm.estado.value.hoyPinchazos)
+        assertNull(p.vm.estado.value.ultimo)
+    }
+
+    @Test
+    fun arrancaConLaInsulinaDelUltimoPinchazoYSinLasArchivadas() = runTest(dispatcher) {
+        val lantusId = insulinas.insertar(Insulina(nombre = "Lantus", paso = 1.0, maximo = 40.0))
+        dao.insertar(Pinchazo(timestamp = ahora - hora, dosis = 20.0, insulina = "Lantus"))
+        insulinas.insertar(Insulina(nombre = "Vieja", archivada = true))
+        val vm = crear().vm
+        assertEquals(lantusId, vm.estado.value.insulina!!.id)
+        assertEquals(listOf(Insulina.HUMALOG_JUNIOR, "Lantus"), vm.estado.value.insulinas.map { it.nombre })
+    }
+
+    @Test
+    fun sinInsulinasNoSePuedeRegistrar() = runTest(dispatcher) {
+        insulinas.borrar(insulinas.todas().single())
+        val vm = crear().vm
+        assertTrue(vm.estado.value.cargado)
+        assertNull(vm.estado.value.insulina)
+        vm.registrar()
+        runCurrent()
+        assertTrue(dao.guardados.isEmpty())
     }
 }

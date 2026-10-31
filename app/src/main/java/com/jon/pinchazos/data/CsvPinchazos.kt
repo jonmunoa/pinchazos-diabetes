@@ -1,12 +1,12 @@
 package com.jon.pinchazos.data
 
-import com.jon.pinchazos.dominio.Dosis
 import com.jon.pinchazos.dominio.Formatos
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToLong
 
 /**
  * CSV con columnas fecha;hora;insulina;dosis. Usa punto y coma y coma decimal ("4,5")
@@ -14,6 +14,9 @@ import java.time.format.DateTimeFormatter
  */
 object CsvPinchazos {
     const val CABECERA = "fecha;hora;insulina;dosis"
+
+    /** Más que esto en un pinchazo es un error del archivo. */
+    private const val MAX_DOSIS = 100.0
 
     private const val BOM = '﻿'
     private val FECHA = DateTimeFormatter.ISO_LOCAL_DATE
@@ -56,12 +59,13 @@ object CsvPinchazos {
                 val fecha = leerFecha(campos[iFecha].trim())
                 val hora = LocalTime.parse(campos[iHora].trim().take(5).padStart(5, '0'), HORA)
                 val dosis = campos[iDosis].trim().replace(',', '.').toDouble()
-                require(dosis in Dosis.MIN..Dosis.MAX)
+                require(dosis in 0.0..MAX_DOSIS)
                 val insulina = campos.getOrNull(iInsulina)?.trim()?.ifEmpty { null }
-                    ?: Insulinas.POR_DEFECTO
+                    ?: Insulina.HUMALOG_JUNIOR
                 Pinchazo(
                     timestamp = fecha.atTime(hora).atZone(zona).toInstant().toEpochMilli(),
-                    dosis = Dosis.ajustar(dosis),
+                    // A la media unidad más cercana, que vale para todas las plumas.
+                    dosis = (dosis * 2).roundToLong() / 2.0,
                     insulina = insulina,
                 )
             }.getOrElse {

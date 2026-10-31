@@ -1,31 +1,29 @@
 package com.jon.pinchazos.ui.informes
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -36,21 +34,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jon.pinchazos.data.Pinchazo
 import com.jon.pinchazos.dominio.DiaPinchazos
 import com.jon.pinchazos.dominio.Formatos
 import com.jon.pinchazos.dominio.Periodo
 import com.jon.pinchazos.ui.comun.Iconos
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import com.jon.pinchazos.ui.comun.TextoCambiante
+import com.jon.pinchazos.ui.comun.entradaEscalonada
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -60,26 +58,19 @@ fun InformesScreen(
     estado: InformesUiState,
     onEditar: (Pinchazo) -> Unit,
 ) {
-    val contexto = LocalContext.current
-    val scope = rememberCoroutineScope()
-
-    val importar = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            val texto = withContext(Dispatchers.IO) {
-                runCatching {
-                    contexto.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                }.getOrNull()
-            }
-            if (texto == null) viewModel.avisar("No se pudo leer el archivo") else viewModel.importarCsv(texto)
-        }
-    }
-
+    // Con varias insulinas se ve cuál es cada pinchazo; con una sola sobra.
+    val conNombre = estado.filtro == null && estado.filtrables.size > 1
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        item { Text("Informes", style = MaterialTheme.typography.headlineMedium) }
+
+        if (estado.filtrables.size > 1) {
+            item { FiltroInsulina(estado, onElegir = viewModel::filtrar) }
+        }
+
         item {
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 Periodo.entries.forEachIndexed { i, periodo ->
@@ -88,31 +79,19 @@ fun InformesScreen(
                         onClick = { viewModel.elegirPeriodo(periodo) },
                         shape = SegmentedButtonDefaults.itemShape(i, Periodo.entries.size),
                         icon = {},
-                        modifier = Modifier.height(48.dp),
                     ) { Text(periodo.etiqueta, maxLines = 1) }
                 }
             }
         }
 
+        item { Resumen(estado, Modifier.entradaEscalonada(0)) }
+
         item {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.height(IntrinsicSize.Min),
-            ) {
-                val n = estado.resumen.pinchazos
-                val celda = Modifier.weight(1f).fillMaxHeight()
-                Cifra("$n", if (n == 1) "pinchazo" else "pinchazos", celda)
-                Cifra(Formatos.numero(estado.resumen.unidades), "unidades", celda)
-                Cifra(Formatos.numero(estado.resumen.mediaDiaria), "u de media al día", celda)
-            }
+            Seccion("Momento del día", Modifier.entradaEscalonada(1)) { BarrasFranjas(estado.franjas) }
         }
 
         item {
-            Seccion("Momento del día") { BarrasFranjas(estado.franjas) }
-        }
-
-        item {
-            Seccion("Cuándo y cuánto") {
+            Seccion("Cuándo y cuánto", Modifier.entradaEscalonada(2)) {
                 if (estado.diasGrafico.isEmpty()) {
                     TextoVacio()
                 } else {
@@ -122,30 +101,11 @@ fun InformesScreen(
         }
 
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = {
-                        scope.launch {
-                            val csv = viewModel.exportarCsv()
-                            runCatching { CompartirCsv.compartir(contexto, csv) }
-                                .onFailure { viewModel.avisar("No se pudo exportar") }
-                        }
-                    },
-                    modifier = Modifier.weight(1f).height(52.dp),
-                ) { Text("Exportar CSV") }
-                OutlinedButton(
-                    onClick = { importar.launch(CompartirCsv.TIPOS_IMPORTABLES) },
-                    modifier = Modifier.weight(1f).height(52.dp),
-                ) { Text("Importar CSV") }
-            }
-        }
-
-        item {
             Column(Modifier.padding(top = 8.dp)) {
-                Text("Historial", style = MaterialTheme.typography.titleLarge)
+                Text("Historial", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "Toca un pinchazo para cambiar la dosis o la hora.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -155,40 +115,89 @@ fun InformesScreen(
             item { TextoVacio() }
         }
 
-        estado.historial.forEach { dia ->
+        estado.historial.forEachIndexed { i, dia ->
             item(key = "dia-${dia.fecha}") {
-                TarjetaDia(dia, estado.hoy, onEditar = onEditar, onBorrar = viewModel::borrar)
+                TarjetaDia(
+                    dia,
+                    estado.hoy,
+                    conNombre,
+                    onEditar = onEditar,
+                    onBorrar = viewModel::borrar,
+                    modifier = Modifier.animateItem().entradaEscalonada(3 + i),
+                )
             }
         }
     }
 }
 
+/** "Todas" y una por insulina con pinchazos. */
 @Composable
-private fun Cifra(valor: String, etiqueta: String, modifier: Modifier = Modifier) {
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+private fun FiltroInsulina(estado: InformesUiState, onElegir: (String?) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 16.dp).heightIn(min = 72.dp)) {
-            Text(
-                valor,
-                style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum"),
-                maxLines = 1,
+        (listOf<String?>(null) + estado.filtrables).forEach { nombre ->
+            FilterChip(
+                selected = nombre == estado.filtro,
+                onClick = { onElegir(nombre) },
+                label = {
+                    Text(
+                        nombre ?: "Todas",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 200.dp),
+                    )
+                },
+                shape = RoundedCornerShape(10.dp),
             )
-            Text(etiqueta, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+/** Tres cifras en una sola tarjeta: pinchazos, unidades y media al día. */
+@Composable
+private fun Resumen(estado: InformesUiState, modifier: Modifier) {
+    val r = estado.resumen
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = modifier,
+    ) {
+        Row(Modifier.padding(vertical = 14.dp)) {
+            Cifra("${r.pinchazos}", if (r.pinchazos == 1) "pinchazo" else "pinchazos", Modifier.weight(1f))
+            Cifra(Formatos.numero(r.unidades), "unidades", Modifier.weight(1f))
+            Cifra(Formatos.numero(r.mediaDiaria), "u al día de media", Modifier.weight(1f))
         }
     }
 }
 
 @Composable
-private fun Seccion(titulo: String, contenido: @Composable () -> Unit) {
+private fun Cifra(valor: String, etiqueta: String, modifier: Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        TextoCambiante(valor, MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"))
+        Text(
+            etiqueta,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun Seccion(titulo: String, modifier: Modifier, contenido: @Composable () -> Unit) {
     Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = modifier,
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(titulo, style = MaterialTheme.typography.titleLarge)
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text(titulo, style = MaterialTheme.typography.titleMedium)
             contenido()
         }
     }
@@ -198,7 +207,7 @@ private fun Seccion(titulo: String, contenido: @Composable () -> Unit) {
 private fun TextoVacio() {
     Text(
         "No hay pinchazos en este periodo",
-        style = MaterialTheme.typography.bodyLarge,
+        style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
@@ -208,46 +217,49 @@ private fun TextoVacio() {
 private fun TarjetaDia(
     dia: DiaPinchazos,
     hoy: LocalDate,
+    conNombre: Boolean,
     onEditar: (Pinchazo) -> Unit,
     onBorrar: (Pinchazo) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = modifier,
     ) {
-        Column(Modifier.padding(vertical = 8.dp)) {
+        Column(Modifier.padding(vertical = 4.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
             ) {
                 Text(
                     Formatos.etiquetaDia(dia.fecha, hoy),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f),
                 )
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(10.dp),
-                ) {
-                    Text(
-                        "${Formatos.pinchazos(dia.pinchazos.size)} · ${Formatos.unidades(dia.unidades)}",
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    )
-                }
+                Text(
+                    "${Formatos.pinchazos(dia.pinchazos.size)} · ${Formatos.unidades(dia.unidades)}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             dia.pinchazos.forEachIndexed { i, p ->
-                if (i > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
-                FilaPinchazo(p, onEditar = { onEditar(p) }, onBorrar = { onBorrar(p) })
+                if (i > 0) {
+                    HorizontalDivider(
+                        Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    )
+                }
+                FilaPinchazo(p, conNombre, onEditar = { onEditar(p) }, onBorrar = { onBorrar(p) })
             }
         }
     }
 }
 
-/** Hora | dosis | papelera. Al pulsar la papelera, la propia fila pide confirmación. */
+/** Hora | dosis (e insulina) | papelera. Al pulsar la papelera, la propia fila pide confirmación. */
 @Composable
-private fun FilaPinchazo(p: Pinchazo, onEditar: () -> Unit, onBorrar: () -> Unit) {
+private fun FilaPinchazo(p: Pinchazo, conNombre: Boolean, onEditar: () -> Unit, onBorrar: () -> Unit) {
     val zona = ZoneId.systemDefault()
     val hora = Formatos.hora(p.timestamp, zona)
     var confirmando by remember(p.id) { mutableStateOf(false) }
@@ -256,22 +268,20 @@ private fun FilaPinchazo(p: Pinchazo, onEditar: () -> Unit, onBorrar: () -> Unit
         Surface(
             color = MaterialTheme.colorScheme.errorContainer,
             contentColor = MaterialTheme.colorScheme.onErrorContainer,
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(12.dp),
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.padding(start = 12.dp, end = 4.dp).heightIn(min = 64.dp),
+                modifier = Modifier.padding(start = 12.dp, end = 4.dp).heightIn(min = 52.dp),
             ) {
                 Text(
                     "¿Borrar ${Formatos.unidades(p.dosis)} de las $hora?",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = { confirmando = false }, modifier = Modifier.height(48.dp)) {
-                    Text("No")
-                }
+                TextButton(onClick = { confirmando = false }) { Text("No") }
                 Button(
                     onClick = {
                         confirmando = false
@@ -281,7 +291,6 @@ private fun FilaPinchazo(p: Pinchazo, onEditar: () -> Unit, onBorrar: () -> Unit
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError,
                     ),
-                    modifier = Modifier.height(48.dp),
                 ) { Text("Borrar") }
             }
         }
@@ -291,27 +300,29 @@ private fun FilaPinchazo(p: Pinchazo, onEditar: () -> Unit, onBorrar: () -> Unit
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onEditar)
-                .heightIn(min = 64.dp)
-                .padding(start = 16.dp, end = 4.dp),
+                .heightIn(min = 52.dp)
+                .padding(start = 16.dp, end = 4.dp)
+                .semantics { contentDescription = "$hora, ${Formatos.unidades(p.dosis)} de ${p.insulina}. Toca para cambiarlo." },
         ) {
             Text(
                 hora,
-                style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
-                fontWeight = FontWeight.Normal,
-                modifier = Modifier.width(84.dp),
+                style = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum"),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(64.dp),
             )
             Column(Modifier.weight(1f)) {
-                Text(
-                    Formatos.unidades(p.dosis),
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Text(
-                    p.insulina,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Text(Formatos.unidades(p.dosis), style = MaterialTheme.typography.bodyLarge)
+                if (conNombre) {
+                    Text(
+                        p.insulina,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-            IconButton(onClick = { confirmando = true }, modifier = Modifier.height(48.dp).width(48.dp)) {
+            IconButton(onClick = { confirmando = true }) {
                 Icon(
                     Iconos.Papelera,
                     contentDescription = "Borrar el pinchazo de las $hora",

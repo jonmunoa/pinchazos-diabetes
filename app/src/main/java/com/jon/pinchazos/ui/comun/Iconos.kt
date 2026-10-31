@@ -2,6 +2,7 @@ package com.jon.pinchazos.ui.comun
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
@@ -51,6 +52,33 @@ object Iconos {
                 lineTo(9.2f, 21f)
                 quadTo(7.5f, 21f, 7.4f, 19.2f)
                 close()
+            }
+        }.build()
+    }
+
+    /** Tres controles deslizantes: Ajustes. */
+    val Ajustes: ImageVector by lazy {
+        ImageVector.Builder("Ajustes", 24.dp, 24.dp, 24f, 24f).apply {
+            path(stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round) {
+                moveTo(4f, 6f); lineTo(20f, 6f)
+                moveTo(4f, 12f); lineTo(20f, 12f)
+                moveTo(4f, 18f); lineTo(20f, 18f)
+            }
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(9f, 6f); arcTo(2.5f, 2.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, 14f, 6f); arcTo(2.5f, 2.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, 9f, 6f)
+                moveTo(13f, 12f); arcTo(2.5f, 2.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, 18f, 12f); arcTo(2.5f, 2.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, 13f, 12f)
+                moveTo(6f, 18f); arcTo(2.5f, 2.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, 11f, 18f); arcTo(2.5f, 2.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, 6f, 18f)
+            }
+        }.build()
+    }
+
+    val Mas: ImageVector by lazy {
+        ImageVector.Builder("Mas", 24.dp, 24.dp, 24f, 24f).apply {
+            path(stroke = SolidColor(Color.Black), strokeLineWidth = 2.2f, strokeLineCap = StrokeCap.Round) {
+                moveTo(12f, 5f)
+                lineTo(12f, 19f)
+                moveTo(5f, 12f)
+                lineTo(19f, 12f)
             }
         }.build()
     }

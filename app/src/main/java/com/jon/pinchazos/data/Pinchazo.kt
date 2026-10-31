@@ -9,15 +9,8 @@ data class Pinchazo(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     /** Momento del pinchazo, en milisegundos desde epoch. */
     val timestamp: Long,
-    /** Unidades, de 0 a 12 en pasos de 0,5. */
+    /** Unidades, en los pasos de su insulina. */
     val dosis: Double,
+    /** Nombre de la [Insulina]. */
     val insulina: String,
 )
-
-/** Tipos de insulina disponibles. Para añadir uno nuevo basta con sumarlo a [TODAS]. */
-object Insulinas {
-    const val HUMALOG_JUNIOR = "Humalog Junior"
-
-    val TODAS: List<String> = listOf(HUMALOG_JUNIOR)
-    val POR_DEFECTO: String = TODAS.first()
-}

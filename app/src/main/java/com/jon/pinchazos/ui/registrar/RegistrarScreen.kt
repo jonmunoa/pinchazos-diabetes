@@ -2,15 +2,20 @@ package com.jon.pinchazos.ui.registrar
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -18,32 +23,34 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.jon.pinchazos.data.Insulinas
+import com.jon.pinchazos.data.Insulina
 import com.jon.pinchazos.data.Pinchazo
-import com.jon.pinchazos.dominio.Dosis
 import com.jon.pinchazos.dominio.Formatos
+import com.jon.pinchazos.ui.comun.ElegirMomento
 import com.jon.pinchazos.ui.comun.SelectorDosis
-import com.jon.pinchazos.ui.comun.SelectorFechaHora
+import com.jon.pinchazos.ui.comun.TextoCambiante
 import com.jon.pinchazos.ui.comun.encogerAlPulsar
 import com.jon.pinchazos.ui.theme.LocalColoresExtra
 import java.time.ZoneId
@@ -51,33 +58,66 @@ import java.time.ZoneId
 @Composable
 fun RegistrarScreen(
     estado: RegistrarUiState,
+    onInsulina: (Long) -> Unit,
     onDosis: (Double) -> Unit,
-    onInsulina: (String) -> Unit,
     onHora: (Long?) -> Unit,
     onRegistrar: () -> Unit,
     onCorregir: (Pinchazo) -> Unit,
+    onNuevaInsulina: () -> Unit,
+    onEditarInsulina: (Insulina) -> Unit,
 ) {
+    val insulina = estado.insulina
+    if (insulina == null) {
+        // Hasta saber si hay insulinas no se enseña nada, para no parpadear el estado vacío.
+        if (estado.cargado) SinInsulinas(onNuevaInsulina)
+        return
+    }
     Column(Modifier.fillMaxSize()) {
         Column(
             Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.heightIn(min = 4.dp))
+            SelectorInsulina(estado.insulinas, insulina, onInsulina, onEditarInsulina, onNuevaInsulina)
             TarjetaUltimo(estado, onCorregir)
-            SelectorInsulina(estado.insulina, onInsulina)
             // Mientras se lee la última dosis no se enseña ningún número, para no mostrar uno que no es.
             SelectorDosis(
-                dosis = estado.dosis ?: Dosis.POR_DEFECTO,
+                insulina = insulina,
+                dosis = estado.dosis ?: 0.0,
                 onCambiar = onDosis,
                 modifier = Modifier.alpha(if (estado.dosis == null) 0f else 1f),
             )
-            FilaHora(estado.horaElegida, estado.ahora, onHora)
-            Spacer(Modifier.height(4.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("¿Cuándo?", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ElegirMomento(estado.horaElegida, estado.ahora, onHora)
+            }
+            Spacer(Modifier.heightIn(min = 4.dp))
         }
         BotonRegistrar(estado, onRegistrar)
+    }
+}
+
+@Composable
+private fun SinInsulinas(onNueva: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("No hay ninguna insulina", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+        Text(
+            "Añade la que te pinchas: su nombre, si la pluma marca medias unidades y la dosis máxima.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.heightIn(min = 8.dp))
+        Button(onClick = onNueva, modifier = Modifier.heightIn(min = 48.dp)) { Text("Añadir insulina") }
     }
 }
 
@@ -85,7 +125,7 @@ fun RegistrarScreen(
 private fun TarjetaUltimo(estado: RegistrarUiState, onCorregir: (Pinchazo) -> Unit) {
     val extra = LocalColoresExtra.current
     val fondo by animateColorAsState(
-        if (estado.reciente) extra.reciente else MaterialTheme.colorScheme.surfaceContainerHigh,
+        if (estado.reciente) extra.reciente else MaterialTheme.colorScheme.surfaceContainerLowest,
         animationSpec = tween(250),
         label = "fondoUltimo",
     )
@@ -95,10 +135,11 @@ private fun TarjetaUltimo(estado: RegistrarUiState, onCorregir: (Pinchazo) -> Un
 
     Card(
         colors = CardDefaults.cardColors(containerColor = fondo, contentColor = texto),
-        shape = RoundedCornerShape(24.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (estado.reciente) 0.dp else 1.dp),
+        shape = RoundedCornerShape(18.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             val ultimo = estado.ultimo
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -111,85 +152,98 @@ private fun TarjetaUltimo(estado: RegistrarUiState, onCorregir: (Pinchazo) -> Un
                     TextButton(
                         onClick = { onCorregir(ultimo) },
                         colors = ButtonDefaults.textButtonColors(contentColor = texto),
-                        modifier = Modifier.height(40.dp),
+                        modifier = Modifier.heightIn(min = 40.dp),
                     ) { Text("Corregir o borrar") }
                 }
             }
             if (ultimo == null) {
-                Text("Todavía no hay ninguno", style = MaterialTheme.typography.headlineSmall)
+                Text("Todavía no hay ninguno", style = MaterialTheme.typography.titleLarge)
             } else {
-                Text(
+                TextoCambiante(
                     Formatos.transcurrido(ultimo.timestamp, estado.ahora),
-                    style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum"),
+                    MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"),
                 )
                 Text(
                     "${Formatos.unidades(ultimo.dosis)} ${Formatos.cuando(ultimo.timestamp, hoy, zona)}",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                 )
             }
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = texto.copy(alpha = 0.15f))
-            Text(
+            TextoCambiante(
                 "Hoy: ${Formatos.pinchazos(estado.hoyPinchazos)} · ${Formatos.unidades(estado.hoyUnidades)}",
-                style = MaterialTheme.typography.bodyLarge,
+                MaterialTheme.typography.bodyMedium,
             )
         }
-    }
-}
-
-@Composable
-private fun SelectorInsulina(elegida: String, onElegir: (String) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Insulinas.TODAS.forEach { insulina ->
-            FilterChip(
-                selected = insulina == elegida,
-                onClick = { onElegir(insulina) },
-                label = { Text(insulina, style = MaterialTheme.typography.titleMedium) },
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.height(48.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun FilaHora(horaElegida: Long?, ahora: Long, onHora: (Long?) -> Unit) {
-    var eligiendo by rememberSaveable { mutableStateOf(false) }
-    val zona = ZoneId.systemDefault()
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text("Hora", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(
-                if (horaElegida == null) {
-                    "Ahora"
-                } else {
-                    val hoy = Formatos.fecha(ahora, zona)
-                    "${Formatos.etiquetaCorta(Formatos.fecha(horaElegida, zona), hoy)}, ${Formatos.hora(horaElegida, zona)}"
-                },
-                style = MaterialTheme.typography.titleLarge,
-            )
-        }
-        if (horaElegida != null) {
-            TextButton(onClick = { onHora(null) }, modifier = Modifier.height(48.dp)) { Text("Ahora") }
-        }
-        OutlinedButton(onClick = { eligiendo = true }, modifier = Modifier.height(48.dp)) {
-            Text("Cambiar hora")
-        }
-    }
-    if (eligiendo) {
-        SelectorFechaHora(
-            inicial = horaElegida ?: System.currentTimeMillis(),
-            onElegido = {
-                onHora(it)
-                eligiendo = false
-            },
-            onCancelar = { eligiendo = false },
-        )
     }
 }
 
 /**
- * El botón dice exactamente lo que se va a guardar ("4,5 u · ahora"), así la hora cambiada
- * nunca pasa desapercibida aunque la fila "Hora" quede fuera de la pantalla.
+ * Fila de insulinas (con scroll si no caben) y "+ Añadir" al final. Tocar la ya elegida, o
+ * mantener pulsada cualquiera, abre su edición.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SelectorInsulina(
+    insulinas: List<Insulina>,
+    elegida: Insulina,
+    onElegir: (Long) -> Unit,
+    onEditar: (Insulina) -> Unit,
+    onNueva: () -> Unit,
+) {
+    val haptica = LocalHapticFeedback.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        insulinas.forEach { i ->
+            val esElegida = i.id == elegida.id
+            val interaccion = remember { MutableInteractionSource() }
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (esElegida) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+                contentColor = if (esElegida) {
+                    MaterialTheme.colorScheme.onSecondaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                border = if (esElegida) null else ButtonDefaults.outlinedButtonBorder(),
+                modifier = Modifier
+                    .heightIn(min = 40.dp)
+                    .widthIn(max = 240.dp)
+                    .encogerAlPulsar(interaccion)
+                    .semantics {
+                        selected = esElegida
+                        role = Role.Tab
+                        onLongClick(label = "Editar ${i.nombre}") {
+                            onEditar(i)
+                            true
+                        }
+                    }
+                    .combinedClickable(
+                        interactionSource = interaccion,
+                        indication = ripple(),
+                        onClick = { if (esElegida) onEditar(i) else onElegir(i.id) },
+                        onLongClick = {
+                            haptica.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onEditar(i)
+                        },
+                    ),
+            ) {
+                Box(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+                    Text(i.nombre, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        TextButton(onClick = onNueva) { Text("+ Añadir") }
+    }
+}
+
+/**
+ * El botón dice exactamente lo que se va a guardar ("Registrar 4,5 u · ahora"), así la hora
+ * cambiada nunca pasa desapercibida aunque los botones de hora queden fuera de la pantalla.
  */
 @Composable
 private fun BotonRegistrar(estado: RegistrarUiState, onRegistrar: () -> Unit) {
@@ -207,18 +261,18 @@ private fun BotonRegistrar(estado: RegistrarUiState, onRegistrar: () -> Unit) {
         },
         enabled = boton != EstadoBoton.CARGANDO,
         interactionSource = interaccion,
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(18.dp),
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
-            .height(80.dp)
+            .heightIn(min = 64.dp)
             .encogerAlPulsar(interaccion, escala = 0.97f),
     ) {
         if (boton == EstadoBoton.REGISTRADO) {
-            Text("✓ Registrado", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            Text("✓ Registrado", style = MaterialTheme.typography.titleLarge)
         } else {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Registrar pinchazo", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                Text("Registrar pinchazo", style = MaterialTheme.typography.titleLarge)
                 val dosis = estado.dosis
                 if (dosis != null) {
                     val cuando = estado.horaElegida?.let {
@@ -226,7 +280,9 @@ private fun BotonRegistrar(estado: RegistrarUiState, onRegistrar: () -> Unit) {
                     } ?: "ahora"
                     Text(
                         "${Formatos.unidades(dosis)} · $cuando",
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }

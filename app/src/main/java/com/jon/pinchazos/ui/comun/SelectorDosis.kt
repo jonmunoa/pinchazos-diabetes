@@ -1,6 +1,5 @@
 package com.jon.pinchazos.ui.comun
 
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.InteractionSource
@@ -10,8 +9,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,10 +31,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.jon.pinchazos.dominio.Dosis
+import com.jon.pinchazos.data.Insulina
 import com.jon.pinchazos.dominio.Formatos
-
-private val EaseOutFuerte = CubicBezierEasing(0.23f, 1f, 0.32f, 1f)
 
 /** Encoge un poco el elemento mientras se pulsa, para que se note que responde. */
 @Composable
@@ -42,7 +40,7 @@ fun Modifier.encogerAlPulsar(interaccion: InteractionSource, escala: Float = 0.9
     val pulsado by interaccion.collectIsPressedAsState()
     val actual by animateFloatAsState(
         targetValue = if (pulsado) escala else 1f,
-        animationSpec = tween(durationMillis = 140, easing = EaseOutFuerte),
+        animationSpec = tween(durationMillis = 140, easing = Movimiento.Salida),
         label = "encoger",
     )
     return graphicsLayer {
@@ -51,24 +49,28 @@ fun Modifier.encogerAlPulsar(interaccion: InteractionSource, escala: Float = 0.9
     }
 }
 
-/** Número grande con − y +, y debajo la cuadrícula con todos los valores de 0 a 12. */
+/**
+ * Número grande con − y + en los pasos de la insulina y, debajo, los botones rápidos: todos los
+ * valores si caben (0 a 12 de media en media) o el 25, 50, 75 y 100 % del máximo.
+ */
 @Composable
-fun SelectorDosis(dosis: Double, onCambiar: (Double) -> Unit, modifier: Modifier = Modifier) {
+fun SelectorDosis(insulina: Insulina, dosis: Double, onCambiar: (Double) -> Unit, modifier: Modifier = Modifier) {
+    val paso = if (insulina.paso == 0.5) "media unidad" else "${Formatos.numero(insulina.paso)} u"
     Column(modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            BotonPaso("−", "Restar media unidad", enabled = dosis > Dosis.MIN) {
-                onCambiar(Dosis.sumarPasos(dosis, -1))
+            BotonPaso("−", "Restar $paso", enabled = dosis > 0) {
+                onCambiar(insulina.sumarPasos(dosis, -1))
             }
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     Formatos.numero(dosis),
                     style = MaterialTheme.typography.displayLarge.copy(
-                        fontSize = 72.sp,
-                        lineHeight = 76.sp,
+                        fontSize = 64.sp,
+                        lineHeight = 68.sp,
                         fontFeatureSettings = "tnum",
                     ),
                 )
@@ -76,14 +78,15 @@ fun SelectorDosis(dosis: Double, onCambiar: (Double) -> Unit, modifier: Modifier
                     " u",
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 12.dp),
+                    modifier = Modifier.padding(bottom = 10.dp),
                 )
             }
-            BotonPaso("+", "Sumar media unidad", enabled = dosis < Dosis.MAX) {
-                onCambiar(Dosis.sumarPasos(dosis, 1))
+            BotonPaso("+", "Sumar $paso", enabled = dosis < insulina.tope) {
+                onCambiar(insulina.sumarPasos(dosis, 1))
             }
         }
-        CuadriculaDosis(dosis, onCambiar)
+        val atajos = insulina.atajos
+        Cuadricula(atajos, columnas = if (atajos.size > 4) 5 else 4, dosis, onCambiar)
     }
 }
 
@@ -95,48 +98,46 @@ private fun BotonPaso(texto: String, descripcion: String, enabled: Boolean, onCl
         enabled = enabled,
         interactionSource = interaccion,
         modifier = Modifier
-            .size(72.dp)
+            .size(64.dp)
             .encogerAlPulsar(interaccion)
             .semantics { contentDescription = descripcion },
     ) {
-        Text(texto, fontSize = 36.sp, fontWeight = FontWeight.Medium)
+        Text(texto, fontSize = 32.sp, fontWeight = FontWeight.Medium)
     }
 }
 
 @Composable
-private fun CuadriculaDosis(dosis: Double, onCambiar: (Double) -> Unit) {
+private fun Cuadricula(valores: List<Double>, columnas: Int, dosis: Double, onCambiar: (Double) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Dosis.VALORES.chunked(5).forEach { fila ->
+        valores.chunked(columnas).forEach { fila ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 fila.forEach { valor ->
                     val elegido = valor == dosis
+                    val interaccion = remember { MutableInteractionSource() }
                     Surface(
                         onClick = { onCambiar(valor) },
                         shape = RoundedCornerShape(14.dp),
-                        color = if (elegido) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHighest
-                        },
-                        contentColor = if (elegido) {
-                            MaterialTheme.colorScheme.onPrimary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
+                        color = if (elegido) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerLowest,
+                        contentColor = if (elegido) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                        shadowElevation = if (elegido) 0.dp else 1.dp,
+                        interactionSource = interaccion,
                         modifier = Modifier
                             .weight(1f)
-                            .height(52.dp)
+                            .heightIn(min = 48.dp)
+                            .encogerAlPulsar(interaccion)
                             .semantics { selected = elegido },
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
                                 Formatos.numero(valor),
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
                                 fontWeight = if (elegido) FontWeight.Bold else FontWeight.Medium,
                             )
                         }
                     }
                 }
+                // La última fila incompleta mantiene el ancho de las demás.
+                repeat(columnas - fila.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }

@@ -6,11 +6,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.jon.pinchazos.PinchazosApp
-import com.jon.pinchazos.data.Insulinas
+import com.jon.pinchazos.data.Insulina
 import com.jon.pinchazos.data.MemoriaDosis
 import com.jon.pinchazos.data.Pinchazo
 import com.jon.pinchazos.data.PinchazoRepository
-import com.jon.pinchazos.dominio.Dosis
 import com.jon.pinchazos.dominio.Formatos
 import com.jon.pinchazos.dominio.relojCada
 import kotlinx.coroutines.CancellationException
@@ -40,11 +39,17 @@ enum class EstadoBoton {
 }
 
 data class RegistrarUiState(
+    /** Las que se pueden registrar (sin las archivadas), en orden de alta. */
+    val insulinas: List<Insulina> = emptyList(),
+    /** null mientras carga, o si no hay ninguna. */
+    val insulina: Insulina? = null,
+    /** Ya se sabe qué insulinas hay (para no enseñar "no hay ninguna" mientras carga). */
+    val cargado: Boolean = false,
+    /** El último pinchazo de la insulina elegida. */
     val ultimo: Pinchazo? = null,
     val ahora: Long = System.currentTimeMillis(),
     val hoyPinchazos: Int = 0,
     val hoyUnidades: Double = 0.0,
-    val insulina: String = Insulinas.POR_DEFECTO,
     /** null mientras se lee la última dosis guardada. */
     val dosis: Double? = null,
     /** null = "Ahora". */
@@ -73,13 +78,18 @@ class RegistrarViewModel(
 ) : ViewModel() {
 
     private data class Seleccion(
-        val insulina: String = Insulinas.POR_DEFECTO,
+        /** null = la del último pinchazo (o la primera). */
+        val insulinaId: Long? = null,
+        /** null = la última usada con esa insulina. */
         val dosis: Double? = null,
         val horaElegida: Long? = null,
         val boton: EstadoBoton = EstadoBoton.LISTO,
     )
 
     private val seleccion = MutableStateFlow(Seleccion())
+
+    /** Últimas dosis por insulina; null mientras se leen. */
+    private val ultimas = MutableStateFlow<Map<Long, Double>?>(null)
     private val canal = Channel<EventoRegistro>(Channel.BUFFERED)
 
     /** Avisos para el Snackbar: registrado (con "Deshacer") o error al guardar. */
@@ -87,41 +97,54 @@ class RegistrarViewModel(
 
     val estado: StateFlow<RegistrarUiState> = combine(
         repositorio.pinchazos,
+        repositorio.insulinas,
         reloj,
         seleccion,
-    ) { pinchazos, ahora, sel ->
+        ultimas,
+    ) { pinchazos, todas, ahora, sel, ultimas ->
         val zona = zona()
         val hoy = Formatos.fecha(ahora, zona)
-        val deHoy = pinchazos.filter { Formatos.fecha(it.timestamp, zona) == hoy }
+        val activas = todas.filterNot { it.archivada }
+        val insulina = activas.firstOrNull { it.id == sel.insulinaId }
+            ?: pinchazos.firstNotNullOfOrNull { p -> activas.firstOrNull { it.nombre == p.insulina } }
+            ?: activas.firstOrNull()
+        val suyos = if (insulina == null) emptyList() else pinchazos.filter { it.insulina == insulina.nombre }
+        val deHoy = suyos.filter { Formatos.fecha(it.timestamp, zona) == hoy }
+        val dosis = when {
+            insulina == null || ultimas == null -> null
+            sel.dosis != null -> insulina.ajustar(sel.dosis)
+            else -> insulina.ajustar(ultimas[insulina.id] ?: Insulina.DOSIS_POR_DEFECTO)
+        }
         RegistrarUiState(
-            ultimo = pinchazos.firstOrNull(),
+            insulinas = activas,
+            insulina = insulina,
+            cargado = true,
+            ultimo = suyos.firstOrNull(),
             ahora = ahora,
             hoyPinchazos = deHoy.size,
             hoyUnidades = deHoy.sumOf { it.dosis },
-            insulina = sel.insulina,
-            dosis = sel.dosis,
+            dosis = dosis,
             horaElegida = sel.horaElegida,
-            boton = if (sel.dosis == null) EstadoBoton.CARGANDO else sel.boton,
+            boton = if (dosis == null) EstadoBoton.CARGANDO else sel.boton,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RegistrarUiState())
 
     init {
         viewModelScope.launch {
-            val ultima = try {
-                memoria.ultimaDosis.first()
+            ultimas.value = try {
+                memoria.ultimasDosis.first()
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                Dosis.POR_DEFECTO // preferencias ilegibles: mejor un valor por defecto que no poder registrar
+                emptyMap() // preferencias ilegibles: mejor un valor por defecto que no poder registrar
             }
-            // Si ya ha tocado una dosis mientras cargaba, manda la suya.
-            seleccion.update { if (it.dosis == null) it.copy(dosis = Dosis.ajustar(ultima)) else it }
         }
     }
 
-    fun elegirDosis(dosis: Double) = seleccion.update { it.copy(dosis = Dosis.ajustar(dosis)) }
+    fun elegirDosis(dosis: Double) = seleccion.update { it.copy(dosis = dosis) }
 
-    fun elegirInsulina(insulina: String) = seleccion.update { it.copy(insulina = insulina) }
+    /** Al cambiar de insulina, la dosis vuelve a la última usada con ella. */
+    fun elegirInsulina(id: Long) = seleccion.update { it.copy(insulinaId = id, dosis = null) }
 
     fun elegirHora(timestamp: Long?) = seleccion.update { it.copy(horaElegida = timestamp) }
 
@@ -130,19 +153,25 @@ class RegistrarViewModel(
      * hay un registro en curso o recién hecho (doble toque).
      */
     fun registrar() {
+        // Lo último tocado manda aunque la pantalla aún no lo haya pintado (toque rápido).
+        val visto = estado.value
         val sel = seleccion.value
-        val dosis = sel.dosis ?: return
+        val insulina = visto.insulinas.firstOrNull { it.id == sel.insulinaId } ?: visto.insulina ?: return
+        val dosis = sel.dosis?.let(insulina::ajustar)
+            ?: visto.dosis?.takeIf { visto.insulina?.id == insulina.id }
+            ?: return
         if (sel.boton != EstadoBoton.LISTO) return
         seleccion.update { it.copy(boton = EstadoBoton.GUARDANDO) }
 
         viewModelScope.launch {
             try {
                 val momento = sel.horaElegida?.let { minOf(it, ahora()) } ?: ahora()
-                val pinchazo = repositorio.registrar(dosis, sel.insulina, momento)
+                val pinchazo = repositorio.registrar(dosis, insulina, momento)
                 seleccion.update { it.copy(horaElegida = null, boton = EstadoBoton.REGISTRADO) }
                 canal.send(EventoRegistro.Registrado(pinchazo))
+                ultimas.update { it.orEmpty() + (insulina.id to pinchazo.dosis) }
                 try {
-                    memoria.guardarUltimaDosis(dosis)
+                    memoria.guardarUltimaDosis(insulina.id, pinchazo.dosis)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -161,6 +190,26 @@ class RegistrarViewModel(
 
     fun deshacer(pinchazo: Pinchazo) {
         viewModelScope.launch { repositorio.borrar(pinchazo) }
+    }
+
+    /** Alta o cambio de una insulina; devuelve el error a enseñar o null. Una nueva queda elegida. */
+    suspend fun guardarInsulina(insulina: Insulina): String? {
+        val nueva = insulina.id == 0L
+        val error = repositorio.guardarInsulina(insulina)
+        if (error == null && nueva) {
+            val creada = repositorio.insulinas.first().lastOrNull { it.nombre == insulina.nombre.trim() }
+            if (creada != null) elegirInsulina(creada.id)
+        }
+        return error
+    }
+
+    suspend fun tienePinchazos(insulina: Insulina): Boolean = repositorio.tienePinchazos(insulina)
+
+    fun borrarInsulina(insulina: Insulina) {
+        viewModelScope.launch {
+            repositorio.borrarInsulina(insulina)
+            seleccion.update { if (it.insulinaId == insulina.id) it.copy(insulinaId = null, dosis = null) else it }
+        }
     }
 
     companion object {
